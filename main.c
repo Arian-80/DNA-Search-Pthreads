@@ -32,7 +32,6 @@ struct InnerThreadData {
     char* commonStart;
     size_t* currentSize;
     int start;
-    int end;
     int portion;
     int currIndex;
     struct SharedData sharedData;
@@ -225,7 +224,7 @@ int parseSequences(FILE* file, char** sequences, int sequenceCount, int maxSeque
     for (int i = 0; i < sequenceCount; i++) {
         fscanf(file, "%s", seqBuffer);
         currentLength = strlen(seqBuffer);
-        sequences[i] = (char*) malloc(currentLength * sizeof(char));
+        sequences[i] = (char*) malloc((currentLength+1) * sizeof(char));
         if (!sequences[i]) {
             free_full_2DArray((void**) sequences, i); // Free all up to i
             return 0;
@@ -317,7 +316,6 @@ int findMatches(char* sequence, char** currentPatterns, char* commonStart,
 
 int parallel_manageMatches(struct InnerThreadData data) {
     int start = data.start;
-    int end = data.end;
     int portion = data.portion;
     pthread_barrier_wait(&data.syncBarrier);
 
@@ -421,12 +419,10 @@ int manageMatches(struct ThreadData data) {
                 if (j < remainder) {
                     threadData.portion = portion + 1;
                     threadData.start = j * threadData.portion;
-                    threadData.end = threadData.start + threadData.portion;
                 }
                 else {
                     threadData.portion = portion;
                     threadData.start = portion*(j - remainder) + remainder*(portion + 1);
-                    threadData.end = threadData.start + portion;
                 }
                 if (pthread_create(&threads[j], NULL, (void*) parallel_manageMatches, &threadData)) {
                     for (int k = 0; k < j; k++) {
@@ -460,7 +456,9 @@ int manageMatches(struct ThreadData data) {
             }
         }
         foundMatches[i] = realloc(foundMatches[i], matchCounter[i] * sizeof(int));
-        if (!foundMatches[i]) return 0;
+        if (!foundMatches[i] && matchCounter[i]) {
+            return 0;
+        }
     }
     if (threadsPerThread > 1) {
         pthread_barrier_destroy(&threadData.syncBarrier);
@@ -583,7 +581,6 @@ int DNA_Search(FILE* file, int threadCount, int threadsPerThread) {
         pthread_barrier_wait(&data.syncBarrier);
     }
     pthread_barrier_destroy(&data.syncBarrier);
-
     int result;
     for (int i = 0; i < threadCount; i++) {
         pthread_join(threads[i], (void**) &result);
@@ -597,13 +594,13 @@ int DNA_Search(FILE* file, int threadCount, int threadsPerThread) {
         }
     }
     free(threads);
-
-    for (int i = 0; i < sequenceCount; i++) {
-        printf("Occurrences in sequence %d: %d\n", i+1, matchCount[i]);
-        for (int j = 0; j < matchCount[i]; j++) {
-            printf("Occurrence %d at index: %d\n", j+1, foundMatches[i][j]);
-        }
-    }
+    /* Print results */
+//    for (int i = 0; i < sequenceCount; i++) {
+//        printf("Occurrences in sequence %d: %d\n", i+1, matchCount[i]);
+//        for (int j = 0; j < matchCount[i]; j++) {
+//            printf("Occurrence %d at index: %d\n", j+1, foundMatches[i][j]);
+//        }
+//    }
 
     free_pattern_arrays(patterns, patternLengths, sequenceCount,
                         sequenceCount, patternCount);
@@ -613,11 +610,26 @@ int DNA_Search(FILE* file, int threadCount, int threadsPerThread) {
 }
 
 int main() {
-    FILE *file = getFile("sequences.txt");
-    if (!file) {
-        printf("File not found.\n");
-        return -1;
+    for (int k = 1; k < 9; k++) {
+        if (k == 3) k = 4;
+        if (k == 5) k = 6;
+        if (k == 7) k = 8;
+        FILE *file = getFile("sequences0.txt");
+        if (!file) {
+            printf("File not found.\n");
+            return -1;
+        }
+        clock_t start, end;
+        int result;
+        start = clock();
+        result = DNA_Search(file, k, 1);
+        end = clock();
+        if (!result) return -1;
+        printf("Time taken: %g seconds\n", (double)(end-start) / CLOCKS_PER_SEC);
+        FILE *f = fopen("times.txt", "a");
+        fprintf(f, "%g,", (double)(end-start) / CLOCKS_PER_SEC);
+        fclose(f);
+        fclose(file);
     }
-    if (!DNA_Search(file, 8, 3)) return -1;
     return 0;
 }
