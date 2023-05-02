@@ -18,3 +18,4 @@ File input format:
 ...
 <sequenceN>
 ```
+All input is case-sensitive.
